@@ -1,4 +1,4 @@
-// Copyright (c) 2014 - Max Persson <max@looplab.se>
+// Copyright (c) 2014 - Max Ekman <max@looplab.se>
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,74 +18,71 @@ import (
 	"errors"
 )
 
-// Error returned when a dispatcher is created with a nil event store.
-var ErrNilEventStore = errors.New("event store is nil")
+// ErrInvalidEventStore is when a dispatcher is created with a nil event store.
+var ErrInvalidEventStore = errors.New("invalid event store")
 
-// Error returned when an aggregate is already registered.
-var ErrAggregateAlreadyRegistered = errors.New("aggregate is already registered")
+// ErrInvalidEventBus is when a dispatcher is created with a nil event bus.
+var ErrInvalidEventBus = errors.New("invalid event bus")
 
-// Error returned when an aggregate is not registered.
-var ErrAggregateNotRegistered = errors.New("aggregate is not registered")
+// ErrMismatchedEventType occurs when loaded events from ID does not match aggregate type.
+var ErrMismatchedEventType = errors.New("mismatched event type and aggregate type")
 
 // Repository is a repository responsible for loading and saving aggregates.
 type Repository interface {
-	// Load loads an aggregate with a type and id.
-	Load(string, UUID) (Aggregate, error)
+	// Load loads the most recent version of an aggregate with a type and id.
+	Load(AggregateType, UUID) (Aggregate, error)
 
-	// Save saves an aggregets uncommitted events.
+	// Save saves the uncommittend events for an aggregate.
 	Save(Aggregate) error
 }
 
-// CallbackRepository is an aggregate repository using factory functions.
-type CallbackRepository struct {
+// EventSourcingRepository is an aggregate repository using event sourcing. It
+// uses an event store for loading and saving events used to build the aggregate.
+type EventSourcingRepository struct {
 	eventStore EventStore
-	callbacks  map[string]func(UUID) Aggregate
+	eventBus   EventBus
 }
 
-// NewCallbackRepository creates a repository and associates it with an event store.
-func NewCallbackRepository(eventStore EventStore) (*CallbackRepository, error) {
+// NewEventSourcingRepository creates a repository that will use an event store
+// and bus.
+func NewEventSourcingRepository(eventStore EventStore, eventBus EventBus) (*EventSourcingRepository, error) {
 	if eventStore == nil {
-		return nil, ErrNilEventStore
+		return nil, ErrInvalidEventStore
 	}
 
-	d := &CallbackRepository{
+	if eventBus == nil {
+		return nil, ErrInvalidEventBus
+	}
+
+	d := &EventSourcingRepository{
 		eventStore: eventStore,
-		callbacks:  make(map[string]func(UUID) Aggregate),
+		eventBus:   eventBus,
 	}
 	return d, nil
 }
 
-// RegisterAggregate registers an aggregate factory for a type. The factory is
-// used to create concrete aggregate types when loading from the database.
-//
-// An example would be:
-//     repository.RegisterAggregate(&Aggregate{}, func(id UUID) interface{} { return &Aggregate{id} })
-func (r *CallbackRepository) RegisterAggregate(aggregate Aggregate, callback func(UUID) Aggregate) error {
-	if _, ok := r.callbacks[aggregate.AggregateType()]; ok {
-		return ErrAggregateAlreadyRegistered
+// Load loads an aggregate from the event store. It does so by creating a new
+// aggregate of the type with the ID and then applies all events to it, thus
+// making it the most current version of the aggregate.
+func (r *EventSourcingRepository) Load(aggregateType AggregateType, id UUID) (Aggregate, error) {
+	// Create the aggregate.
+	aggregate, err := CreateAggregate(aggregateType, id)
+	if err != nil {
+		return nil, err
 	}
-
-	r.callbacks[aggregate.AggregateType()] = callback
-
-	return nil
-}
-
-// Load loads an aggregate by creating it and applying all events.
-func (r *CallbackRepository) Load(aggregateType string, id UUID) (Aggregate, error) {
-	// Get the registered factory function for creating aggregates.
-	f, ok := r.callbacks[aggregateType]
-	if !ok {
-		return nil, ErrAggregateNotRegistered
-	}
-
-	// Create aggregate with factory.
-	aggregate := f(id)
 
 	// Load aggregate events.
-	events, _ := r.eventStore.Load(aggregate.AggregateID())
+	events, err := r.eventStore.Load(aggregate.AggregateID())
+	if err != nil {
+		return nil, err
+	}
 
 	// Apply the events.
 	for _, event := range events {
+		if event.AggregateType() != aggregateType {
+			return nil, ErrMismatchedEventType
+		}
+
 		aggregate.ApplyEvent(event)
 		aggregate.IncrementVersion()
 	}
@@ -93,16 +90,25 @@ func (r *CallbackRepository) Load(aggregateType string, id UUID) (Aggregate, err
 	return aggregate, nil
 }
 
-// Save saves all uncommitted events from an aggregate.
-func (r *CallbackRepository) Save(aggregate Aggregate) error {
-	resultEvents := aggregate.GetUncommittedEvents()
+// Save saves all uncommitted events from an aggregate to the event store.
+func (r *EventSourcingRepository) Save(aggregate Aggregate) error {
+	uncommittedEvents := aggregate.GetUncommittedEvents()
+	if len(uncommittedEvents) < 1 {
+		return nil
+	}
 
-	if len(resultEvents) > 0 {
-		// Store events
-		err := r.eventStore.Save(resultEvents)
-		if err != nil {
-			return err
-		}
+	// Store events, check for error after publishing on the bus.
+	if err := r.eventStore.Save(uncommittedEvents, aggregate.Version()); err != nil {
+		return err
+	}
+
+	// TODO: Possibly apply the events and increment the aggregate version here
+	// to have a up to date aggregate. Currently it is discarded by the
+	// command handler after saving.
+
+	// Publish all events on the bus.
+	for _, event := range uncommittedEvents {
+		r.eventBus.PublishEvent(event)
 	}
 
 	aggregate.ClearUncommittedEvents()

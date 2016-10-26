@@ -11,7 +11,7 @@ Event Horizon is a CQRS/ES toolkit for Go.
 
 CQRS stands for Command Query Responsibility Segregation and is a technique where object access (the Query part) and modification (the Command part) are separated from each other. This helps in designing complex data models where the actions can be totally independent from the data output.
 
-ES stands for Event Sourcing and is a technique where all events that have happened in a system are recorded, and all future actions are based on the events instead of a single data model. The main benefit of adding Event Sourcing is tracability of changes which can be used for example in audit logging. Additionally, "incorrect" events that happened in the past (for example due to a bug) can be edited which will make the current data "correct", as that is based on the events.
+ES stands for Event Sourcing and is a technique where all events that have happened in a system are recorded, and all future actions are based on the events instead of a single data model. The main benefit of adding Event Sourcing is traceability of changes which can be used for example in audit logging. Additionally, "incorrect" events that happened in the past (for example due to a bug) can be compensated for with an event which will make the current data "correct", as that is based on the events.
 
 Read more about CQRS/ES from one of the major authors/contributors on the subject: http://codebetter.com/gregyoung/2010/02/16/cqrs-task-based-uis-event-sourcing-agh/
 
@@ -36,32 +36,13 @@ Suggestions are welcome!
 See the example folder for a basic usage example to get you started.
 
 
-# Changes
+# Storage and messaging implementations
 
-### 2015-01-20
+There are simple in memory implementations of all components in the toolkit (event store, read repository, event bus, command bus). Most of these are meant for testing and development, the command bus (and in some cases the event bus) could however fulfill the needs of a production system.
 
-Addded CommandBus that routes commands to handlers. This is for upcoming Saga support. The dispatcher is now renamed to AggregateCommandHandler and must be added to the CommandBus. At the moment Commands have to registered both in the handler and on the bus, this may change in the future.
+In addition there is MongoDB implementations of the event store and a simple read repository, and a Redis implementation of the event bus.
 
-Added MongoDB ReadRepository implementation. Use with "-tags mongo", same as the MongoDB event store.
-
-
-### 2015-01-14
-
-Added Repository that creates/loads and saves aggregates. This needed additional methods in the Aggregate interface.
-
-Removed the reflection based dispatcher, the code was worse performing and harder to test. There was also a bit too much magic going on. If you would like it back open an issue for further discussion.
-
-Renamed Repository to ReadRepository to better adhere to CQRS standards and to free the name to a Aggregate/Saga repository in development.
-
-
-### 2015-01-12
-
-Added an EventStore implementation for MongoDB. It currently uses one document per aggregate with all events as an array to make the most out of MongoDBs lack of trasactions. It still takes two operations when adding events but at least there is a check that the version has not been changed by another operation in between. If you want to use the MongoDB event store add "-tags mongo" to your project build.
-
-
-### 2015-01-07
-
-As of this version commands and events are recommended to be passed around as pointers, instead of values as the previous versions did. Passing as values may still work, but is not tested at the momemnt. It should not requrie much changes in applications using Event Horizon, simple pass all commands and events with & before them or create them as *XXXCommand, see the examples and tests for usage. There are also some other API changes to method names, mostly with using "handler" as a more common term.
+There is also experimental support for AWS DynamoDB as an event store. Support for a event bus using AWS SQS is also planned but not started.
 
 
 # License

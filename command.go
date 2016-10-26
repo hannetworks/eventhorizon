@@ -1,4 +1,4 @@
-// Copyright (c) 2014 - Max Persson <max@looplab.se>
+// Copyright (c) 2014 - Max Ekman <max@looplab.se>
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package eventhorizon is a CQRS/ES toolkit.
 package eventhorizon
 
 // Command is a domain command that is sent to a Dispatcher.
@@ -25,18 +24,9 @@ package eventhorizon
 // only "optional" is a valid tag: `eh:"optional"`.
 type Command interface {
 	AggregateID() UUID
-	AggregateType() string
-	CommandType() string
+	AggregateType() AggregateType
+	CommandType() CommandType
 }
 
-// Event is a domain event describing a change that has happened to an aggregate.
-//
-// An event name should 1) be in past tense and 2) contain the intent
-// (CustomerMoved vs CustomerAddressCorrected).
-//
-// The event should contain all the data needed when applying/handling it.
-type Event interface {
-	AggregateID() UUID
-	AggregateType() string
-	EventType() string
-}
+// CommandType is the type of a command, used as its unique identifier.
+type CommandType string

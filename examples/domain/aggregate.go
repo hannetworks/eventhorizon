@@ -1,4 +1,4 @@
-// Copyright (c) 2014 - Max Persson <max@looplab.se>
+// Copyright (c) 2014 - Max Ekman <max@looplab.se>
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,23 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build mongo
-
-package main
+package domain
 
 import (
 	"fmt"
 
-	"github.com/looplab/eventhorizon"
+	eh "github.com/looplab/eventhorizon"
 )
 
-// Invitation aggregate root.
+func init() {
+	eh.RegisterAggregate(func(id eh.UUID) eh.Aggregate {
+		return NewInvitationAggregate(id)
+	})
+}
+
+// InvitationAggregateType is the type name of the aggregate.
+const InvitationAggregateType eh.AggregateType = "Invitation"
+
+// InvitationAggregate is the root aggregate.
 //
 // The aggregate root will guard that the invitation can only be accepted OR
 // declined, but not both.
-
 type InvitationAggregate struct {
-	*eventhorizon.AggregateBase
+	// AggregateBase implements most of the eventhorizon.Aggregate interface.
+	*eh.AggregateBase
 
 	name     string
 	age      int
@@ -36,11 +43,20 @@ type InvitationAggregate struct {
 	declined bool
 }
 
-func (i *InvitationAggregate) AggregateType() string {
-	return "Invitation"
+// NewInvitationAggregate creates a new InvitationAggregate with an ID.
+func NewInvitationAggregate(id eh.UUID) *InvitationAggregate {
+	return &InvitationAggregate{
+		AggregateBase: eh.NewAggregateBase(id),
+	}
 }
 
-func (i *InvitationAggregate) HandleCommand(command eventhorizon.Command) error {
+// AggregateType implements the AggregateType method of the Aggregate interface.
+func (i *InvitationAggregate) AggregateType() eh.AggregateType {
+	return InvitationAggregateType
+}
+
+// HandleCommand implements the HandleCommand method of the Aggregate interface.
+func (i *InvitationAggregate) HandleCommand(command eh.Command) error {
 	switch command := command.(type) {
 	case *CreateInvite:
 		i.StoreEvent(&InviteCreated{command.InvitationID, command.Name, command.Age})
@@ -81,7 +97,8 @@ func (i *InvitationAggregate) HandleCommand(command eventhorizon.Command) error 
 	return fmt.Errorf("couldn't handle command")
 }
 
-func (i *InvitationAggregate) ApplyEvent(event eventhorizon.Event) {
+// ApplyEvent implements the ApplyEvent method of the Aggregate interface.
+func (i *InvitationAggregate) ApplyEvent(event eh.Event) {
 	switch event := event.(type) {
 	case *InviteCreated:
 		i.name = event.Name

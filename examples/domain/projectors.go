@@ -1,4 +1,4 @@
-// Copyright (c) 2014 - Max Persson <max@looplab.se>
+// Copyright (c) 2014 - Max Ekman <max@looplab.se>
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,37 +12,47 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package domain
 
 import (
-	"github.com/looplab/eventhorizon"
+	eh "github.com/looplab/eventhorizon"
 )
 
+// Invitation is a read model object for an invitation.
 type Invitation struct {
-	ID     eventhorizon.UUID
+	ID     eh.UUID
 	Name   string
+	Age    int
 	Status string
 }
 
-// Projector that writes to a read model
-
+// InvitationProjector is a projector that updates the invitations.
 type InvitationProjector struct {
-	repository eventhorizon.ReadRepository
+	repository eh.ReadRepository
 }
 
-func NewInvitationProjector(repository eventhorizon.ReadRepository) *InvitationProjector {
+// NewInvitationProjector creates a new InvitationProjector.
+func NewInvitationProjector(repository eh.ReadRepository) *InvitationProjector {
 	p := &InvitationProjector{
 		repository: repository,
 	}
 	return p
 }
 
-func (p *InvitationProjector) HandleEvent(event eventhorizon.Event) {
+// HandlerType implements the HandlerType method of the EventHandler interface.
+func (p *InvitationProjector) HandlerType() eh.EventHandlerType {
+	return eh.EventHandlerType("InvitationProjector")
+}
+
+// HandleEvent implements the HandleEvent method of the EventHandler interface.
+func (p *InvitationProjector) HandleEvent(event eh.Event) {
 	switch event := event.(type) {
 	case *InviteCreated:
 		i := &Invitation{
-			ID:   event.InvitationID,
-			Name: event.Name,
+			ID:     event.InvitationID,
+			Name:   event.Name,
+			Age:    event.Age,
+			Status: "created",
 		}
 		p.repository.Save(i.ID, i)
 	case *InviteAccepted:
@@ -58,20 +68,22 @@ func (p *InvitationProjector) HandleEvent(event eventhorizon.Event) {
 	}
 }
 
+// GuestList is a read model object for the guest list.
 type GuestList struct {
+	Id          eh.UUID `json:"id"         bson:"_id"`
 	NumGuests   int
 	NumAccepted int
 	NumDeclined int
 }
 
-// Projector that writes to a read model
-
+// GuestListProjector is a projector that updates the guest list.
 type GuestListProjector struct {
-	repository eventhorizon.ReadRepository
-	eventID    eventhorizon.UUID
+	repository eh.ReadRepository
+	eventID    eh.UUID
 }
 
-func NewGuestListProjector(repository eventhorizon.ReadRepository, eventID eventhorizon.UUID) *GuestListProjector {
+// NewGuestListProjector creates a new GuestListProjector.
+func NewGuestListProjector(repository eh.ReadRepository, eventID eh.UUID) *GuestListProjector {
 	p := &GuestListProjector{
 		repository: repository,
 		eventID:    eventID,
@@ -79,12 +91,20 @@ func NewGuestListProjector(repository eventhorizon.ReadRepository, eventID event
 	return p
 }
 
-func (p *GuestListProjector) HandleEvent(event eventhorizon.Event) {
+// HandlerType implements the HandlerType method of the EventHandler interface.
+func (p *GuestListProjector) HandlerType() eh.EventHandlerType {
+	return eh.EventHandlerType("GuestListProjector")
+}
+
+// HandleEvent implements the HandleEvent method of the EventHandler interface.
+func (p *GuestListProjector) HandleEvent(event eh.Event) {
 	switch event.(type) {
 	case *InviteCreated:
 		m, _ := p.repository.Find(p.eventID)
 		if m == nil {
-			m = &GuestList{}
+			m = &GuestList{
+				Id: p.eventID,
+			}
 		}
 		g := m.(*GuestList)
 		p.repository.Save(p.eventID, g)
@@ -92,11 +112,13 @@ func (p *GuestListProjector) HandleEvent(event eventhorizon.Event) {
 		m, _ := p.repository.Find(p.eventID)
 		g := m.(*GuestList)
 		g.NumAccepted++
+		g.NumGuests++
 		p.repository.Save(p.eventID, g)
 	case *InviteDeclined:
 		m, _ := p.repository.Find(p.eventID)
 		g := m.(*GuestList)
 		g.NumDeclined++
+		g.NumGuests++
 		p.repository.Save(p.eventID, g)
 	}
 }

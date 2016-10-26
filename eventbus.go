@@ -1,4 +1,4 @@
-// Copyright (c) 2014 - Max Persson <max@looplab.se>
+// Copyright (c) 2014 - Max Ekman <max@looplab.se>
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,76 +14,39 @@
 
 package eventhorizon
 
-// EventHandler is an interface that all handlers of events should implement.
-type EventHandler interface {
-	// HandleEvent handles an event.
-	HandleEvent(Event)
-}
-
 // EventBus is an interface defining an event bus for distributing events.
 type EventBus interface {
 	// PublishEvent publishes an event on the event bus.
+	// Only one handler of each handler type that is registered for the event
+	// will receive it.
+	// All the observers will receive the event.
 	PublishEvent(Event)
-	// AddHandler adds a handler for a specific local event.
-	AddHandler(EventHandler, Event)
-	// AddLocalHandler adds a handler for local events.
-	AddLocalHandler(EventHandler)
-	// AddGlobalHandler adds a handler for global (remote) events.
-	AddGlobalHandler(EventHandler)
+
+	// AddHandler adds a handler for an event.
+	// TODO: Use a pattern instead of event for what to handle.
+	AddHandler(EventHandler, EventType)
+	// AddObserver adds an observer.
+	// TODO: Add pattern for what to observe.
+	AddObserver(EventObserver)
 }
 
-// InternalEventBus is an event bus that notifies registered EventHandlers of
-// published events.
-type InternalEventBus struct {
-	eventHandlers  map[string]map[EventHandler]bool
-	localHandlers  map[EventHandler]bool
-	globalHandlers map[EventHandler]bool
+// EventHandler is a handler of events.
+// Only one handler of the same type will receive an event.
+type EventHandler interface {
+	// HandleEvent handles an event.
+	HandleEvent(Event)
+
+	// HandlerType returns the type of the handler.
+	HandlerType() EventHandlerType
 }
 
-// NewInternalEventBus creates a InternalEventBus.
-func NewInternalEventBus() *InternalEventBus {
-	b := &InternalEventBus{
-		eventHandlers:  make(map[string]map[EventHandler]bool),
-		localHandlers:  make(map[EventHandler]bool),
-		globalHandlers: make(map[EventHandler]bool),
-	}
-	return b
-}
+// EventHandlerType is the type of an event handler. Used to serve only handle
+// an event by one handler of each type.
+type EventHandlerType string
 
-// PublishEvent publishes an event to all handlers capable of handling it.
-func (b *InternalEventBus) PublishEvent(event Event) {
-	if handlers, ok := b.eventHandlers[event.EventType()]; ok {
-		for handler := range handlers {
-			handler.HandleEvent(event)
-		}
-	}
-
-	// Publish to local and global handlers.
-	for handler := range b.localHandlers {
-		handler.HandleEvent(event)
-	}
-	for handler := range b.globalHandlers {
-		handler.HandleEvent(event)
-	}
-}
-
-// AddHandler adds a handler for a specific local event.
-func (b *InternalEventBus) AddHandler(handler EventHandler, event Event) {
-	// Create handler list for new event types.
-	if _, ok := b.eventHandlers[event.EventType()]; !ok {
-		b.eventHandlers[event.EventType()] = make(map[EventHandler]bool)
-	}
-
-	// Add handler to event type.
-	b.eventHandlers[event.EventType()][handler] = true
-}
-
-// AddLocalHandler adds a handler for local events.
-func (b *InternalEventBus) AddLocalHandler(handler EventHandler) {
-	b.localHandlers[handler] = true
-}
-
-// AddGlobalHandler adds a handler for global (remote) events.
-func (b *InternalEventBus) AddGlobalHandler(handler EventHandler) {
-	b.globalHandlers[handler] = true
+// EventObserver is an observer of events.
+// All observers will receive an event.
+type EventObserver interface {
+	// Notify is notifed about an event.
+	Notify(Event)
 }

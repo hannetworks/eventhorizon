@@ -1,4 +1,4 @@
-// Copyright (c) 2014 - Max Persson <max@looplab.se>
+// Copyright (c) 2014 - Max Ekman <max@looplab.se>
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,10 +18,10 @@ import (
 	"errors"
 )
 
-// Error returned when a handler is already registered for a command.
+// ErrHandlerAlreadySet is when a handler is already registered for a command.
 var ErrHandlerAlreadySet = errors.New("handler is already set")
 
-// Error returned when no handler can be found.
+// ErrHandlerNotFound is when no handler can be found.
 var ErrHandlerNotFound = errors.New("no handlers for command")
 
 // CommandHandler is an interface that all handlers of commands should implement.
@@ -34,36 +34,5 @@ type CommandBus interface {
 	// HandleCommand handles a command on the event bus.
 	HandleCommand(Command) error
 	// SetHandler registers a handler with a command.
-	SetHandler(CommandHandler, Command) error
-}
-
-// InternalCommandBus is a command bus that handles commands with the
-// registered CommandHandlers
-type InternalCommandBus struct {
-	handlers map[string]CommandHandler
-}
-
-// NewInternalCommandBus creates a InternalCommandBus.
-func NewInternalCommandBus() *InternalCommandBus {
-	b := &InternalCommandBus{
-		handlers: make(map[string]CommandHandler),
-	}
-	return b
-}
-
-// HandleCommand handles a command with a handler capable of handling it.
-func (b *InternalCommandBus) HandleCommand(command Command) error {
-	if handler, ok := b.handlers[command.CommandType()]; ok {
-		return handler.HandleCommand(command)
-	}
-	return ErrHandlerNotFound
-}
-
-// SetHandler adds a handler for a specific command.
-func (b *InternalCommandBus) SetHandler(handler CommandHandler, command Command) error {
-	if _, ok := b.handlers[command.CommandType()]; ok {
-		return ErrHandlerAlreadySet
-	}
-	b.handlers[command.CommandType()] = handler
-	return nil
+	SetHandler(CommandHandler, CommandType) error
 }

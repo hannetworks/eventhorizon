@@ -1,4 +1,4 @@
-// Copyright (c) 2014 - Max Persson <max@looplab.se>
+// Copyright (c) 2014 - Max Ekman <max@looplab.se>
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,13 +20,13 @@ import (
 	"time"
 )
 
-// Error returned when a dispatcher is created with a nil repository.
+// ErrNilRepository is when a dispatcher is created with a nil repository.
 var ErrNilRepository = errors.New("repository is nil")
 
-// Error returned when an aggregate is already registered for a command.
+// ErrAggregateAlreadySet is when an aggregate is already registered for a command.
 var ErrAggregateAlreadySet = errors.New("aggregate is already set")
 
-// Error returned when no aggregate can be found.
+// ErrAggregateNotFound is when no aggregate can be found.
 var ErrAggregateNotFound = errors.New("no aggregate for command")
 
 // CommandFieldError is returned by Dispatch when a field is incorrect.
@@ -49,7 +49,7 @@ func (c CommandFieldError) Error() string {
 // 6. The events are published to the event bus when stored by the event store
 type AggregateCommandHandler struct {
 	repository Repository
-	aggregates map[string]string
+	aggregates map[CommandType]AggregateType
 }
 
 // NewAggregateCommandHandler creates a new AggregateCommandHandler.
@@ -60,20 +60,20 @@ func NewAggregateCommandHandler(repository Repository) (*AggregateCommandHandler
 
 	h := &AggregateCommandHandler{
 		repository: repository,
-		aggregates: make(map[string]string),
+		aggregates: make(map[CommandType]AggregateType),
 	}
 	return h, nil
 }
 
 // SetAggregate sets an aggregate as handler for a command.
-func (h *AggregateCommandHandler) SetAggregate(aggregate Aggregate, command Command) error {
+func (h *AggregateCommandHandler) SetAggregate(aggregateType AggregateType, commandType CommandType) error {
 	// Check for already existing handler.
-	if _, ok := h.aggregates[command.CommandType()]; ok {
+	if _, ok := h.aggregates[commandType]; ok {
 		return ErrAggregateAlreadySet
 	}
 
 	// Add aggregate type to command type.
-	h.aggregates[command.CommandType()] = aggregate.AggregateType()
+	h.aggregates[commandType] = aggregateType
 
 	return nil
 }
@@ -86,15 +86,16 @@ func (h *AggregateCommandHandler) HandleCommand(command Command) error {
 		return err
 	}
 
-	var aggregateType string
-	var ok bool
-	if aggregateType, ok = h.aggregates[command.CommandType()]; !ok {
+	aggregateType, ok := h.aggregates[command.CommandType()]
+	if !ok {
 		return ErrAggregateNotFound
 	}
 
-	var aggregate Aggregate
-	if aggregate, err = h.repository.Load(aggregateType, command.AggregateID()); err != nil {
+	aggregate, err := h.repository.Load(aggregateType, command.AggregateID())
+	if err != nil {
 		return err
+	} else if aggregate == nil {
+		return ErrAggregateNotFound
 	}
 
 	if err = aggregate.HandleCommand(command); err != nil {
@@ -132,8 +133,15 @@ func (h *AggregateCommandHandler) checkCommand(command Command) error {
 
 func isZero(v reflect.Value) bool {
 	switch v.Kind() {
-	case reflect.Func, reflect.Map, reflect.Slice:
+	case reflect.Func, reflect.Chan, reflect.Uintptr, reflect.Ptr, reflect.UnsafePointer:
+		// Types that are not allowed at all.
+		// NOTE: Would be better with its own error for this.
+		return true
+	case reflect.Map, reflect.Array, reflect.Slice:
 		return v.IsNil()
+	case reflect.Interface, reflect.String:
+		z := reflect.Zero(v.Type())
+		return v.Interface() == z.Interface()
 	case reflect.Struct:
 		// Special case to get zero values by method.
 		switch obj := v.Interface().(type) {
@@ -150,9 +158,10 @@ func isZero(v reflect.Value) bool {
 			z = z && isZero(v.Field(i))
 		}
 		return z
+	default:
+		// Don't check for zero for value types:
+		// Bool, Int, Int8, Int16, Int32, Int64, Uint, Uint8, Uint16, Uint32,
+		// Uint64, Float32, Float64, Complex64, Complex128
+		return false
 	}
-
-	// Compare other types directly:
-	z := reflect.Zero(v.Type())
-	return v.Interface() == z.Interface()
 }

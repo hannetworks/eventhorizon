@@ -1,4 +1,4 @@
-// Copyright (c) 2014 - Max Persson <max@looplab.se>
+// Copyright (c) 2014 - Max Ekman <max@looplab.se>
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,130 +15,171 @@
 package eventhorizon
 
 import (
-	"testing"
-
-	. "gopkg.in/check.v1"
+	"errors"
 )
 
-// Hook up gocheck into the "go test" runner.
-//
-// Run benchmarks with "go test -check.b"
-func Test(t *testing.T) { TestingT(t) }
+func init() {
+	RegisterAggregate(func(id UUID) Aggregate {
+		return &TestAggregate{AggregateBase: NewAggregateBase(id)}
+	})
+	RegisterAggregate(func(id UUID) Aggregate {
+		return &TestAggregate2{AggregateBase: NewAggregateBase(id)}
+	})
 
-type EmptyAggregate struct {
+	RegisterEvent(func() Event { return &TestEvent{} })
+	RegisterEvent(func() Event { return &TestEvent2{} })
 }
+
+const (
+	TestAggregateType  AggregateType = "TestAggregate"
+	TestAggregate2Type AggregateType = "TestAggregate2"
+
+	TestEventType  EventType = "TestEvent"
+	TestEvent2Type EventType = "TestEvent2"
+
+	TestCommandType  CommandType = "TestCommand"
+	TestCommand2Type CommandType = "TestCommand2"
+)
 
 type TestAggregate struct {
 	*AggregateBase
-	events []Event
+
+	dispatchedCommand Command
+	appliedEvent      Event
+	numHandled        int
 }
 
-func (t *TestAggregate) AggregateType() string {
-	return "TestAggregate"
+func (a *TestAggregate) AggregateType() AggregateType {
+	return TestAggregateType
 }
 
-func (t *TestAggregate) ApplyEvent(event Event) {
-	t.events = append(t.events, event)
+func (a *TestAggregate) HandleCommand(command Command) error {
+	a.dispatchedCommand = command
+	a.numHandled++
+	switch command := command.(type) {
+	case *TestCommand:
+		if command.Content == "error" {
+			return errors.New("command error")
+		}
+		a.StoreEvent(&TestEvent{command.TestID, command.Content})
+		return nil
+	}
+	return errors.New("couldn't handle command")
 }
 
-type TestEvent struct {
-	TestID  UUID
-	Content string
+func (a *TestAggregate) ApplyEvent(event Event) {
+	a.appliedEvent = event
 }
 
-func (t *TestEvent) AggregateID() UUID     { return t.TestID }
-func (t *TestEvent) AggregateType() string { return "Test" }
-func (t *TestEvent) EventType() string     { return "TestEvent" }
+type TestAggregate2 struct {
+	*AggregateBase
 
-type TestEventOther struct {
-	TestID  UUID
-	Content string
+	dispatchedCommand Command
+	appliedEvent      Event
+	numHandled        int
 }
 
-func (t *TestEventOther) AggregateID() UUID     { return t.TestID }
-func (t *TestEventOther) AggregateType() string { return "Test" }
-func (t *TestEventOther) EventType() string     { return "TestEventOther" }
+func (a *TestAggregate2) AggregateType() AggregateType {
+	return TestAggregate2Type
+}
+
+func (a *TestAggregate2) HandleCommand(command Command) error {
+	a.dispatchedCommand = command
+	a.numHandled++
+	switch command := command.(type) {
+	case *TestCommand2:
+		if command.Content == "error" {
+			return errors.New("command error")
+		}
+		a.StoreEvent(&TestEvent2{command.TestID, command.Content})
+		return nil
+	}
+	return errors.New("couldn't handle command")
+}
+
+func (a *TestAggregate2) ApplyEvent(event Event) {
+	a.appliedEvent = event
+}
 
 type TestCommand struct {
 	TestID  UUID
 	Content string
 }
 
-func (t *TestCommand) AggregateID() UUID     { return t.TestID }
-func (t *TestCommand) AggregateType() string { return "Test" }
-func (t *TestCommand) CommandType() string   { return "TestCommand" }
+func (t TestCommand) AggregateID() UUID            { return t.TestID }
+func (t TestCommand) AggregateType() AggregateType { return TestAggregateType }
+func (t TestCommand) CommandType() CommandType     { return TestCommandType }
 
-type TestCommandOther struct {
+type TestCommand2 struct {
 	TestID  UUID
 	Content string
 }
 
-func (t *TestCommandOther) AggregateID() UUID     { return t.TestID }
-func (t *TestCommandOther) AggregateType() string { return "Test" }
-func (t *TestCommandOther) CommandType() string   { return "TestCommandOther" }
+func (t TestCommand2) AggregateID() UUID            { return t.TestID }
+func (t TestCommand2) AggregateType() AggregateType { return TestAggregate2Type }
+func (t TestCommand2) CommandType() CommandType     { return TestCommand2Type }
 
-type TestCommandOther2 struct {
+type TestEvent struct {
 	TestID  UUID
 	Content string
 }
 
-func (t *TestCommandOther2) AggregateID() UUID     { return t.TestID }
-func (t *TestCommandOther2) AggregateType() string { return "Test" }
-func (t *TestCommandOther2) CommandType() string   { return "TestCommandOther2" }
+func (t TestEvent) AggregateID() UUID            { return t.TestID }
+func (t TestEvent) AggregateType() AggregateType { return TestAggregateType }
+func (t TestEvent) EventType() EventType         { return TestEventType }
 
-type MockEventHandler struct {
-	events []Event
-	recv   chan struct{}
+type TestEvent2 struct {
+	TestID  UUID
+	Content string
 }
 
-func NewMockEventHandler() *MockEventHandler {
-	return &MockEventHandler{
-		make([]Event, 0),
-		make(chan struct{}),
-	}
-}
-
-func (m *MockEventHandler) HandleEvent(event Event) {
-	m.events = append(m.events, event)
-	close(m.recv)
-}
+func (t TestEvent2) AggregateID() UUID            { return t.TestID }
+func (t TestEvent2) AggregateType() AggregateType { return TestAggregate2Type }
+func (t TestEvent2) EventType() EventType         { return TestEvent2Type }
 
 type MockRepository struct {
-	aggregates map[UUID]Aggregate
+	Aggregates map[UUID]Aggregate
 }
 
-func (m *MockRepository) Load(aggregateType string, id UUID) (Aggregate, error) {
-	return m.aggregates[id], nil
+func (m *MockRepository) Load(aggregateType AggregateType, id UUID) (Aggregate, error) {
+	return m.Aggregates[id], nil
 }
 
 func (m *MockRepository) Save(aggregate Aggregate) error {
-	m.aggregates[aggregate.AggregateID()] = aggregate
+	m.Aggregates[aggregate.AggregateID()] = aggregate
 	return nil
 }
 
 type MockEventStore struct {
-	events []Event
-	loaded UUID
+	Events []Event
+	Loaded UUID
+	// Used to simulate errors in the store.
+	err error
 }
 
-func (m *MockEventStore) Save(events []Event) error {
-	m.events = append(m.events, events...)
+func (m *MockEventStore) Save(events []Event, originalVersion int) error {
+	if m.err != nil {
+		return m.err
+	}
+	m.Events = append(m.Events, events...)
 	return nil
 }
 
 func (m *MockEventStore) Load(id UUID) ([]Event, error) {
-	m.loaded = id
-	return m.events, nil
+	if m.err != nil {
+		return nil, m.err
+	}
+	m.Loaded = id
+	return m.Events, nil
 }
 
 type MockEventBus struct {
-	events []Event
+	Events []Event
 }
 
 func (m *MockEventBus) PublishEvent(event Event) {
-	m.events = append(m.events, event)
+	m.Events = append(m.Events, event)
 }
 
-func (m *MockEventBus) AddHandler(handler EventHandler, event Event) {}
-func (m *MockEventBus) AddLocalHandler(handler EventHandler)         {}
-func (m *MockEventBus) AddGlobalHandler(handler EventHandler)        {}
+func (m *MockEventBus) AddHandler(handler EventHandler, eventType EventType) {}
+func (m *MockEventBus) AddObserver(observer EventObserver)                   {}
