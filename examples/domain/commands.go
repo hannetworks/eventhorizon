@@ -18,10 +18,22 @@ import (
 	eh "github.com/looplab/eventhorizon"
 )
 
+func init() {
+	eh.RegisterCommand(func() eh.Command { return &CreateInvite{} })
+	eh.RegisterCommand(func() eh.Command { return &AcceptInvite{} })
+	eh.RegisterCommand(func() eh.Command { return &DeclineInvite{} })
+	eh.RegisterCommand(func() eh.Command { return &ConfirmInvite{} })
+	eh.RegisterCommand(func() eh.Command { return &DenyInvite{} })
+}
+
 const (
-	CreateInviteCommand  eh.CommandType = "CreateInvite"
+	CreateInviteCommand eh.CommandType = "CreateInvite"
+
 	AcceptInviteCommand  eh.CommandType = "AcceptInvite"
 	DeclineInviteCommand eh.CommandType = "DeclineInvite"
+
+	ConfirmInviteCommand eh.CommandType = "ConfirmInvite"
+	DenyInviteCommand    eh.CommandType = "DenyInvite"
 )
 
 // CreateInvite is a command for creating invites.
@@ -52,3 +64,21 @@ type DeclineInvite struct {
 func (c DeclineInvite) AggregateID() eh.UUID            { return c.InvitationID }
 func (c DeclineInvite) AggregateType() eh.AggregateType { return InvitationAggregateType }
 func (c DeclineInvite) CommandType() eh.CommandType     { return DeclineInviteCommand }
+
+// ConfirmInvite is a command for confirming invites.
+type ConfirmInvite struct {
+	InvitationID eh.UUID
+}
+
+func (c ConfirmInvite) AggregateID() eh.UUID            { return c.InvitationID }
+func (c ConfirmInvite) AggregateType() eh.AggregateType { return InvitationAggregateType }
+func (c ConfirmInvite) CommandType() eh.CommandType     { return ConfirmInviteCommand }
+
+// DenyInvite is a command for confirming invites.
+type DenyInvite struct {
+	InvitationID eh.UUID
+}
+
+func (c DenyInvite) AggregateID() eh.UUID            { return c.InvitationID }
+func (c DenyInvite) AggregateType() eh.AggregateType { return InvitationAggregateType }
+func (c DenyInvite) CommandType() eh.CommandType     { return DenyInviteCommand }

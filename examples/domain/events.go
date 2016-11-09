@@ -22,12 +22,18 @@ func init() {
 	eh.RegisterEvent(func() eh.Event { return &InviteCreated{} })
 	eh.RegisterEvent(func() eh.Event { return &InviteAccepted{} })
 	eh.RegisterEvent(func() eh.Event { return &InviteDeclined{} })
+	eh.RegisterEvent(func() eh.Event { return &InviteConfirmed{} })
+	eh.RegisterEvent(func() eh.Event { return &InviteDenied{} })
 }
 
 const (
-	InviteCreatedEvent  eh.EventType = "InviteCreated"
+	InviteCreatedEvent eh.EventType = "InviteCreated"
+
 	InviteAcceptedEvent eh.EventType = "InviteAccepted"
 	InviteDeclinedEvent eh.EventType = "InviteDeclined"
+
+	InviteConfirmedEvent eh.EventType = "InviteConfirmed"
+	InviteDeniedEvent    eh.EventType = "InviteDenied"
 )
 
 // InviteCreated is an event for when an invite has been created.
@@ -58,3 +64,21 @@ type InviteDeclined struct {
 func (c InviteDeclined) AggregateID() eh.UUID            { return c.InvitationID }
 func (c InviteDeclined) AggregateType() eh.AggregateType { return InvitationAggregateType }
 func (c InviteDeclined) EventType() eh.EventType         { return InviteDeclinedEvent }
+
+// InviteConfirmed is an event for when an invite has been confirmed as booked.
+type InviteConfirmed struct {
+	InvitationID eh.UUID `bson:"invitation_id"`
+}
+
+func (c InviteConfirmed) AggregateID() eh.UUID            { return c.InvitationID }
+func (c InviteConfirmed) AggregateType() eh.AggregateType { return InvitationAggregateType }
+func (c InviteConfirmed) EventType() eh.EventType         { return InviteConfirmedEvent }
+
+// InviteDenied is an event for when an invite has been denied to book.
+type InviteDenied struct {
+	InvitationID eh.UUID `bson:"invitation_id"`
+}
+
+func (c InviteDenied) AggregateID() eh.UUID            { return c.InvitationID }
+func (c InviteDenied) AggregateType() eh.AggregateType { return InvitationAggregateType }
+func (c InviteDenied) EventType() eh.EventType         { return InviteDeniedEvent }
