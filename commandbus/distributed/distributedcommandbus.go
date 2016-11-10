@@ -10,7 +10,7 @@ type DistributedCommandBus struct {
 	connector CommandBusConnector
 }
 
-// NewCommandBus creates a CommandBus.
+// NewCommandBus creates a default CommandBus.
 func NewDistributedCommandBus(domain string) *DistributedCommandBus {
 	b := &DistributedCommandBus{
 		connector: &RabbitMQTTCBC{
@@ -18,8 +18,16 @@ func NewDistributedCommandBus(domain string) *DistributedCommandBus {
 			topicstrategy: &DefaultTopicStrategy{},
 			commandparse:  &JsonCommandParse{},
 			routStrategy:  &StaticRoutingStrategy{domain: domain},
-			configs:       Config{broker: "tcp://localhost:1883", cleansession: false},
+			configs:       Config{broker: "tcp://localhost:1883", username: "guest", password: "guest", cleansession: false},
 		},
+	}
+	return b
+}
+
+// creates a custome CommandBus.
+func NewCustomDistributedCommandBus(connector CommandBusConnector) *DistributedCommandBus {
+	b := &DistributedCommandBus{
+		connector: connector,
 	}
 	return b
 }

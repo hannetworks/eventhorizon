@@ -31,13 +31,19 @@ func TestExample(t *testing.T) {
 	log.Println("step3")
 	handler, err := eh.NewAggregateCommandHandler(repository)
 	handler.SetAggregate(domain.InvitationAggregateType, domain.CreateInviteCommand)
-	rbc := NewDistributedCommandBus("domain")
+	rbc := NewCustomDistributedCommandBus(&RabbitMQTTCBC{
+		handlers:      make(map[eh.CommandType]eh.CommandHandler),
+		topicstrategy: &DefaultTopicStrategy{},
+		commandparse:  &JsonCommandParse{},
+		routStrategy:  &StaticRoutingStrategy{domain: "domain"},
+		configs:       Config{broker: "tcp://localhost:1883", username: "guest", password: "guest", cleansession: false},
+	})
 	rbc.SetHandler(handler, domain.CreateInviteCommand)
 	log.Println("step4")
 	time.Sleep(time.Millisecond * 5000)
 	athenaID := eh.NewUUID()
 	rbc.HandleCommand(&domain.CreateInvite{InvitationID: athenaID, Name: "Athena", Age: 42})
-	rbc.HandleCommand(&domain.CreateInvite{InvitationID: athenaID, Name: "Athena", Age: 42})
+
 	log.Println("end")
 	for {
 		time.Sleep(time.Millisecond * 5000)

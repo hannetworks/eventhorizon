@@ -1,7 +1,6 @@
 package distributed
 
 import (
-	"fmt"
 	"log"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
@@ -49,20 +48,7 @@ func (rbmcbc *RabbitMQTTCBC) initOpts() *MQTT.ClientOptions {
 	if rbmcbc.configs.password != "" {
 		opts.SetPassword(rbmcbc.configs.password)
 	}
-	//broker := "tcp://localhost:1883"
-	//id := string(eh.NewUUID())
 
-	//opts := MQTT.NewClientOptions()
-	//opts.AddBroker(broker)
-	//opts.SetClientID(id)
-	//	opts.SetUsername(*user)
-	//	opts.SetPassword(*password)
-	//opts.SetCleanSession(false)
-	//	if *store != ":memory:" {
-	//		opts.SetStore(MQTT.NewFileStore(*store))
-	//	}
-
-	//client := MQTT.NewClient(opts)
 	return opts
 }
 func (rbmcbc *RabbitMQTTCBC) Send(command eh.Command) error {
@@ -70,7 +56,6 @@ func (rbmcbc *RabbitMQTTCBC) Send(command eh.Command) error {
 	client := MQTT.NewClient(opts)
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
 		return token.Error()
-		//panic(token.Error())
 	}
 
 	msg, err := rbmcbc.commandparse.Encode(command)
@@ -99,24 +84,12 @@ func (rbmcbc *RabbitMQTTCBC) Subscribe(commandHandler eh.CommandHandler, command
 }
 
 func (rbmcbc *RabbitMQTTCBC) connectServer() {
-	//broker := "tcp://localhost:1883"
-	//id := string(eh.NewUUID())
-
-	//opts := MQTT.NewClientOptions()
-	//opts.AddBroker(broker)
-	//opts.SetClientID(id)
-	//	opts.SetUsername(*user)
-	//	opts.SetPassword(*password)
-	//opts.SetCleanSession(false)
-	//	if *store != ":memory:" {
-	//		opts.SetStore(MQTT.NewFileStore(*store))
-	//	}
 
 	opts := rbmcbc.initOpts()
 	choke := make(chan [2]string)
 
 	opts.SetDefaultPublishHandler(func(client MQTT.Client, msg MQTT.Message) {
-		fmt.Printf("first RECEIVED TOPIC: %s MESSAGE: %s\n", msg.Topic(), string(msg.Payload()))
+		log.Printf("RECEIVED TOPIC: %s MESSAGE: %s\n", msg.Topic(), string(msg.Payload()))
 		choke <- [2]string{msg.Topic(), string(msg.Payload())}
 	})
 	subclient := MQTT.NewClient(opts)
@@ -132,31 +105,27 @@ func (rbmcbc *RabbitMQTTCBC) connectServer() {
 }
 
 func (rbmcbc *RabbitMQTTCBC) listening(choke chan [2]string) {
-
-	for true {
-		fmt.Println("listening ")
+	log.Println("start to listen ")
+	for {
 		incoming := <-choke
-		fmt.Printf("RECEIVED TOPIC: %s MESSAGE: %s\n", incoming[0], incoming[1])
 		ct := rbmcbc.topicstrategy.ParseTopic(incoming[0])
 		if ct == "" {
 			continue
 		} else {
 			if handler, ok := rbmcbc.handlers[ct]; ok {
-				//handler.HandleCommand(json.Unmarshal(incoming[1], eh.CreateCommand(ct)))
 				command, err := eh.CreateCommand(ct)
 				if err != nil {
-					fmt.Println("error1")
+					log.Fatal("get command origin type error" + string(err.Error()))
 					continue
 				} else {
 					command, err = rbmcbc.commandparse.Decode(incoming[1], command)
-					fmt.Println("get command")
 					if err != nil {
-						fmt.Println("error2")
+						log.Fatal("generate commande instance error" + string(err.Error()))
 						continue
 					} else {
 						err = handler.HandleCommand(command)
 						if err != nil {
-							fmt.Println("commandhandle error : " + string(err.Error()))
+							log.Fatal("commandhandle error : " + string(err.Error()))
 						}
 					}
 				}
