@@ -6,9 +6,11 @@ import (
 	"time"
 
 	eh "github.com/looplab/eventhorizon"
-	eventbus "github.com/looplab/eventhorizon/eventbus/local"
+	commandbus "github.com/looplab/eventhorizon/commandbus/local"
+
 	eventstore "github.com/looplab/eventhorizon/eventstore/memory"
 	"github.com/looplab/eventhorizon/examples/domain"
+	readrepository "github.com/looplab/eventhorizon/readrepository/memory"
 )
 
 func TestExample(t *testing.T) {
@@ -18,7 +20,7 @@ func TestExample(t *testing.T) {
 
 	// Create the event bus that distributes events.
 	log.Println("step2")
-	eventBus := eventbus.NewEventBus()
+	eventBus := NewEventBus()
 	eventBus.AddObserver(&domain.Logger{})
 
 	// Create the aggregate repository.
@@ -31,14 +33,13 @@ func TestExample(t *testing.T) {
 	log.Println("step3")
 	handler, err := eh.NewAggregateCommandHandler(repository)
 	handler.SetAggregate(domain.InvitationAggregateType, domain.CreateInviteCommand)
-	rbc := NewCustomDistributedCommandBus(&RabbitMQTTCBC{
-		handlers:      make(map[eh.CommandType]eh.CommandHandler),
-		topicStrategy: &DefaultTopicStrategy{},
-		commandParse:  &JsonCommandParse{},
-		routeStrategy: &StaticRoutingStrategy{domain: "domain"},
-		configs:       Config{broker: "tcp://localhost:1883", username: "guest", password: "guest", cleansession: false},
-	})
+	rbc := commandbus.NewCommandBus()
 	rbc.SetHandler(handler, domain.CreateInviteCommand)
+
+	invitationRepository := readrepository.NewReadRepository()
+	invitationProjector := domain.NewInvitationProjector(invitationRepository)
+	eventBus.AddHandler(invitationProjector, domain.InviteCreatedEvent)
+
 	log.Println("step4")
 	time.Sleep(time.Millisecond * 5000)
 	athenaID := eh.NewUUID()
