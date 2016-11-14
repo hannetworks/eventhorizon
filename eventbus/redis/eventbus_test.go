@@ -18,10 +18,9 @@ import (
 	"os"
 	"reflect"
 	"testing"
-	"time"
 
 	eh "github.com/looplab/eventhorizon"
-	"github.com/looplab/eventhorizon/testutil"
+	"github.com/looplab/eventhorizon/mocks"
 )
 
 func TestEventBus(t *testing.T) {
@@ -42,7 +41,7 @@ func TestEventBus(t *testing.T) {
 		t.Fatal("there should be a bus")
 	}
 	defer bus.Close()
-	observer := testutil.NewMockEventObserver()
+	observer := mocks.NewEventObserver()
 	bus.AddObserver(observer)
 
 	// Another bus to test the observer.
@@ -51,7 +50,7 @@ func TestEventBus(t *testing.T) {
 		t.Fatal("there should be no error:", err)
 	}
 	defer bus2.Close()
-	observer2 := testutil.NewMockEventObserver()
+	observer2 := mocks.NewEventObserver()
 	bus2.AddObserver(observer2)
 
 	// Wait for subscriptions to be ready.
@@ -59,55 +58,129 @@ func TestEventBus(t *testing.T) {
 	<-bus2.ready
 
 	t.Log("publish event without handler")
-	event1 := &testutil.TestEvent{eh.NewUUID(), "event1"}
+	event1 := &mocks.Event{eh.NewUUID(), "event1"}
 	bus.PublishEvent(event1)
-	waitForEvent(t, observer)
+	observer.WaitForEvent(t)
 	if !reflect.DeepEqual(observer.Events, []eh.Event{event1}) {
 		t.Error("the observed events should be correct:", observer.Events)
 	}
-	waitForEvent(t, observer2)
+	observer2.WaitForEvent(t)
 	if !reflect.DeepEqual(observer2.Events, []eh.Event{event1}) {
 		t.Error("the second observed events should be correct:", observer2.Events)
 	}
 
 	t.Log("publish event")
-	handler := testutil.NewMockEventHandler("testHandler")
-	bus.AddHandler(handler, testutil.TestEventType)
+	handler := mocks.NewEventHandler("testHandler")
+	bus.AddHandler(handler, mocks.EventType)
 	bus.PublishEvent(event1)
 	if !reflect.DeepEqual(handler.Events, []eh.Event{event1}) {
 		t.Error("the handler events should be correct:", handler.Events)
 	}
-	waitForEvent(t, observer)
+	observer.WaitForEvent(t)
 	if !reflect.DeepEqual(observer.Events, []eh.Event{event1, event1}) {
 		t.Error("the observed events should be correct:", observer.Events)
 	}
-	waitForEvent(t, observer2)
+	observer2.WaitForEvent(t)
 	if !reflect.DeepEqual(observer2.Events, []eh.Event{event1, event1}) {
 		t.Error("the second observed events should be correct:", observer2.Events)
 	}
 
 	t.Log("publish another event")
-	bus.AddHandler(handler, testutil.TestEventOtherType)
-	event2 := &testutil.TestEventOther{eh.NewUUID(), "event2"}
+	bus.AddHandler(handler, mocks.EventOtherType)
+	event2 := &mocks.EventOther{eh.NewUUID(), "event2"}
 	bus.PublishEvent(event2)
 	if !reflect.DeepEqual(handler.Events, []eh.Event{event1, event2}) {
 		t.Error("the handler events should be correct:", handler.Events)
 	}
-	waitForEvent(t, observer)
+	observer.WaitForEvent(t)
 	if !reflect.DeepEqual(observer.Events, []eh.Event{event1, event1, event2}) {
 		t.Error("the observed events should be correct:", observer.Events)
 	}
-	waitForEvent(t, observer2)
+	observer2.WaitForEvent(t)
 	if !reflect.DeepEqual(observer2.Events, []eh.Event{event1, event1, event2}) {
 		t.Error("the second observed events should be correct:", observer2.Events)
 	}
 }
 
-func waitForEvent(t *testing.T, observer *testutil.MockEventObserver) {
-	select {
-	case <-observer.Recv:
-		return
-	case <-time.After(time.Second):
-		t.Error("did not receive event in time")
+func TestEventBusAsync(t *testing.T) {
+	// Support Wercker testing with MongoDB.
+	host := os.Getenv("REDIS_PORT_6379_TCP_ADDR")
+	port := os.Getenv("REDIS_PORT_6379_TCP_PORT")
+
+	url := ":6379"
+	if host != "" && port != "" {
+		url = host + ":" + port
+	}
+
+	bus, err := NewEventBus("test", url, "")
+	if err != nil {
+		t.Fatal("there should be no error:", err)
+	}
+	if bus == nil {
+		t.Fatal("there should be a bus")
+	}
+	defer bus.Close()
+	bus.SetHandlingStrategy(eh.AsyncEventHandlingStrategy)
+	observer := mocks.NewEventObserver()
+	bus.AddObserver(observer)
+
+	// Another bus to test the observer.
+	bus2, err := NewEventBus("test", url, "")
+	if err != nil {
+		t.Fatal("there should be no error:", err)
+	}
+	defer bus2.Close()
+	bus2.SetHandlingStrategy(eh.AsyncEventHandlingStrategy)
+	observer2 := mocks.NewEventObserver()
+	bus2.AddObserver(observer2)
+
+	// Wait for subscriptions to be ready.
+	<-bus.ready
+	<-bus2.ready
+
+	t.Log("publish event without handler")
+	event1 := &mocks.Event{eh.NewUUID(), "event1"}
+	bus.PublishEvent(event1)
+	observer.WaitForEvent(t)
+	if !reflect.DeepEqual(observer.Events, []eh.Event{event1}) {
+		t.Error("the observed events should be correct:", observer.Events)
+	}
+	observer2.WaitForEvent(t)
+	if !reflect.DeepEqual(observer2.Events, []eh.Event{event1}) {
+		t.Error("the second observed events should be correct:", observer2.Events)
+	}
+
+	t.Log("publish event")
+	handler := mocks.NewEventHandler("testHandler")
+	bus.AddHandler(handler, mocks.EventType)
+	bus.PublishEvent(event1)
+	handler.WaitForEvent(t)
+	if !reflect.DeepEqual(handler.Events, []eh.Event{event1}) {
+		t.Error("the handler events should be correct:", handler.Events)
+	}
+	observer.WaitForEvent(t)
+	if !reflect.DeepEqual(observer.Events, []eh.Event{event1, event1}) {
+		t.Error("the observed events should be correct:", observer.Events)
+	}
+	observer2.WaitForEvent(t)
+	if !reflect.DeepEqual(observer2.Events, []eh.Event{event1, event1}) {
+		t.Error("the second observed events should be correct:", observer2.Events)
+	}
+
+	t.Log("publish another event")
+	bus.AddHandler(handler, mocks.EventOtherType)
+	event2 := &mocks.EventOther{eh.NewUUID(), "event2"}
+	bus.PublishEvent(event2)
+	handler.WaitForEvent(t)
+	if !reflect.DeepEqual(handler.Events, []eh.Event{event1, event2}) {
+		t.Error("the handler events should be correct:", handler.Events)
+	}
+	observer.WaitForEvent(t)
+	if !reflect.DeepEqual(observer.Events, []eh.Event{event1, event1, event2}) {
+		t.Error("the observed events should be correct:", observer.Events)
+	}
+	observer2.WaitForEvent(t)
+	if !reflect.DeepEqual(observer2.Events, []eh.Event{event1, event1, event2}) {
+		t.Error("the second observed events should be correct:", observer2.Events)
 	}
 }

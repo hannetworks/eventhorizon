@@ -18,6 +18,7 @@ import (
 	"errors"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/garyburd/redigo/redis"
@@ -34,15 +35,25 @@ var ErrCouldNotMarshalEvent = errors.New("could not marshal event")
 var ErrCouldNotUnmarshalEvent = errors.New("could not unmarshal event")
 
 // EventBus is an event bus that notifies registered EventHandlers of
-// published events.
+// published events. It will use the SimpleEventHandlingStrategy by default.
 type EventBus struct {
 	handlers  map[eh.EventType]map[eh.EventHandler]bool
 	observers map[eh.EventObserver]bool
-	prefix    string
-	pool      *redis.Pool
-	conn      *redis.PubSubConn
-	ready     chan bool // NOTE: Used for testing only
-	exit      chan bool
+
+	// handlerMu guards all maps at once for concurrent writes. No need for
+	// separate mutexes per map for this as AddHandler/AddObserven is often
+	// called at program init and not at run time.
+	handlerMu sync.RWMutex
+
+	// handlingStrategy is the strategy to use when handling event, for example
+	// to handle the asynchronously.
+	handlingStrategy eh.EventHandlingStrategy
+
+	prefix string
+	pool   *redis.Pool
+	conn   *redis.PubSubConn
+	ready  chan bool // NOTE: Used for testing only
+	exit   chan bool
 }
 
 // NewEventBus creates a EventBus for remote events.
@@ -107,12 +118,25 @@ func NewEventBusWithPool(appID string, pool *redis.Pool) (*EventBus, error) {
 	return b, nil
 }
 
+// SetHandlingStrategy implements the SetHandlingStrategy method of the
+// eventhorizon.EventBus interface.
+func (b *EventBus) SetHandlingStrategy(strategy eh.EventHandlingStrategy) {
+	b.handlingStrategy = strategy
+}
+
 // PublishEvent publishes an event to all handlers capable of handling it.
 func (b *EventBus) PublishEvent(event eh.Event) {
+	b.handlerMu.RLock()
+	defer b.handlerMu.RUnlock()
+
 	// Handle the event if there is a handler registered.
 	if handlers, ok := b.handlers[event.EventType()]; ok {
-		for handler := range handlers {
-			handler.HandleEvent(event)
+		for h := range handlers {
+			if b.handlingStrategy == eh.AsyncEventHandlingStrategy {
+				go h.HandleEvent(event)
+			} else {
+				h.HandleEvent(event)
+			}
 		}
 	}
 
@@ -122,8 +146,11 @@ func (b *EventBus) PublishEvent(event eh.Event) {
 	}
 }
 
-// AddHandler adds a handler for a specific local event.
+// AddHandler implements the AddHandler method of the eventhorizon.EventBus interface.
 func (b *EventBus) AddHandler(handler eh.EventHandler, eventType eh.EventType) {
+	b.handlerMu.Lock()
+	defer b.handlerMu.Unlock()
+
 	// Create handler list for new event types.
 	if _, ok := b.handlers[eventType]; !ok {
 		b.handlers[eventType] = make(map[eh.EventHandler]bool)
@@ -133,8 +160,11 @@ func (b *EventBus) AddHandler(handler eh.EventHandler, eventType eh.EventType) {
 	b.handlers[eventType][handler] = true
 }
 
-// AddObserver implements the AddObserver method of the EventHandler interface.
+// AddObserver implements the AddObserver method of the eventhorizon.EventBus interface.
 func (b *EventBus) AddObserver(observer eh.EventObserver) {
+	b.handlerMu.Lock()
+	defer b.handlerMu.Unlock()
+
 	b.observers[observer] = true
 }
 
@@ -215,9 +245,16 @@ func (b *EventBus) recv(delay *backoff.Backoff) error {
 				continue
 			}
 
+			b.handlerMu.RLock()
 			for o := range b.observers {
-				o.Notify(event)
+				if b.handlingStrategy == eh.AsyncEventHandlingStrategy {
+					go o.Notify(event)
+				} else {
+					o.Notify(event)
+				}
 			}
+			b.handlerMu.RUnlock()
+
 		case redis.Subscription:
 			if v.Kind == "psubscribe" {
 				log.Println("eventbus: subscribed to:", v.Channel)
