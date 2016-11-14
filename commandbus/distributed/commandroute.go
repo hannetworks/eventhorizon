@@ -7,7 +7,7 @@ import (
 	eh "github.com/looplab/eventhorizon"
 )
 
-type RoutingStrategy interface {
+type CommandRoute interface {
 	GetRoutingKey(eh.Command) RoutingKey
 	GetTopicPattern() TopicPattern
 }

@@ -15,9 +15,9 @@ func NewDistributedCommandBus(domain string) *DistributedCommandBus {
 	b := &DistributedCommandBus{
 		connector: &RabbitMQTTCBC{
 			handlers:      make(map[eh.CommandType]eh.CommandHandler),
-			topicstrategy: &DefaultTopicStrategy{},
-			commandparse:  &JsonCommandParse{},
-			routStrategy:  &StaticRoutingStrategy{domain: domain},
+			topicStrategy: &DefaultTopicStrategy{},
+			commandParse:  &JsonCommandParse{},
+			routeStrategy: &StaticRoutingStrategy{domain: domain},
 			configs:       Config{broker: "tcp://localhost:1883", username: "guest", password: "guest", cleansession: false},
 		},
 	}
